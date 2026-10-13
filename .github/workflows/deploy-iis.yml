@@ -1,9 +1,8 @@
 name: Deploy OT Portal (IIS)
 
-# push เข้า cicd-deploy เมื่อไหร่ -> test + build + deploy ขึ้น IIS ทันที
-# ต้องตั้ง Repository variables (Settings > Secrets and variables > Actions > Variables):
-#   IIS_DEPLOY_PATH  เช่น C:\inetpub\wwwroot\otportal   (โฟลเดอร์ของ OT Portal เท่านั้น! robocopy /MIR จะลบไฟล์อื่นทิ้ง)
-#   IIS_APP_POOL     เช่น OTPortal                       (ไม่บังคับ ถ้าตั้งจะ stop/start app pool ระหว่าง deploy)
+# push เข้า cicd-deploy เมื่อไหร่ -> build + test บน GitHub-hosted แล้วส่งผลลัพธ์ให้ self-hosted runner deploy ขึ้น IIS
+# server ไม่ต้องมี .NET SDK / Node แค่มี ASP.NET Core Hosting Bundle 9 สำหรับรันแอปใน IIS
+# DEPLOY_TARGET ต้องเป็นโฟลเดอร์ของ OT Portal เท่านั้น! robocopy /MIR จะลบไฟล์อื่นทิ้ง
 
 on:
   push:
@@ -20,9 +19,48 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
 
 jobs:
-  build-deploy:
+  build:
     # ถ้าไฟล์นี้หลุดไป repo อื่น จะไม่รัน
     if: github.repository == 'jenkasco-boop/OTPortal'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      # UseAppHost=false -> web.config เรียก "dotnet OtPortal.Api.dll" ใช้ได้ทั้ง app pool 32/64-bit
+      - name: Publish
+        run: dotnet publish src/OtPortal.Api/OtPortal.Api.csproj --configuration Release --output publish -p:UseAppHost=false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: otportal-publish
+          path: publish
+          retention-days: 7
+
+  deploy:
+    needs: build
     runs-on: [self-hosted, windows]
     steps:
       - name: Check config
@@ -34,31 +72,10 @@ jobs:
             throw "DEPLOY_TARGET '$env:DEPLOY_TARGET' is too broad - must be a folder dedicated to OT Portal"
           }
 
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          # เก็บ node_modules จากรอบก่อนไว้ ไม่ต้องติดตั้งใหม่ทั้งหมดทุกรอบ
-          clean: false
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 9.0.x
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Build frontend
-        working-directory: web
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile --prefer-offline --store-dir C:\deploy\pnpm-store
-          pnpm build
-
-      - name: Test
-        run: dotnet test --configuration Release
-
-      - name: Publish
-        run: dotnet publish src/OtPortal.Api/OtPortal.Api.csproj --configuration Release --output publish
+          name: otportal-publish
+          path: publish
 
       - name: Deploy to IIS
         shell: powershell
