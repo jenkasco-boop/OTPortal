@@ -1,26 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, periodOf, periodRange, thShortDate, toIsoDate, type Employee, type Entry, type Report } from './api'
+import {
+  api,
+  periodOf,
+  periodRange,
+  setUnauthorizedHandler,
+  thShortDate,
+  toIsoDate,
+  UnauthorizedError,
+  type Employee,
+  type Entry,
+  type Report,
+} from './api'
 import EntryForm from './EntryForm'
 import EntryTable from './EntryTable'
+import Login from './Login'
 import Settings from './Settings'
 import TimelineImport from './TimelineImport'
 
-const EMPLOYEE_KEY = 'otportal.employeeId'
-
 const currentPeriod = () => periodOf(toIsoDate(new Date()))
 
-function readStoredEmployee(): number | null {
-  try {
-    const v = localStorage.getItem(EMPLOYEE_KEY)
-    return v ? Number(v) : null
-  } catch {
-    return null
-  }
-}
-
 export default function App() {
-  const [employees, setEmployees] = useState<Employee[] | null>(null)
-  const [employeeId, setEmployeeId] = useState<number | null>(readStoredEmployee)
+  // undefined = still checking the session, null = signed out
+  const [employee, setEmployee] = useState<Employee | null | undefined>(undefined)
   const [month, setMonth] = useState(currentPeriod)
   const [entries, setEntries] = useState<Entry[]>([])
   const [report, setReport] = useState<Report | null>(null)
@@ -29,38 +30,45 @@ export default function App() {
   const [showTimeline, setShowTimeline] = useState(false)
   const [error, setError] = useState('')
 
-  const employee = employees?.find((e) => e.id === employeeId) ?? null
   const range = periodRange(month)
+  const employeeId = employee?.id
 
-  const loadEmployees = useCallback(async () => {
-    const list = await api.employees()
-    setEmployees(list)
-    return list
+  const signOut = useCallback(() => {
+    setEmployee(null)
+    setEntries([])
+    setReport(null)
+    setEditing(null)
+    setShowSettings(false)
+    setShowTimeline(false)
+    setError('')
   }, [])
 
   useEffect(() => {
-    loadEmployees().catch((e) => setError(e.message))
-  }, [loadEmployees])
-
-  const selectEmployee = (id: number) => {
-    setEmployeeId(id)
-    try {
-      localStorage.setItem(EMPLOYEE_KEY, String(id))
-    } catch {
-      /* storage unavailable */
-    }
-  }
+    setUnauthorizedHandler(signOut)
+    api
+      .me()
+      .then(setEmployee)
+      .catch((e) => {
+        if (!(e instanceof UnauthorizedError)) setError(e.message)
+        setEmployee(null)
+      })
+  }, [signOut])
 
   const reload = useCallback(async () => {
-    if (!employee) return
-    const [list, rep] = await Promise.all([api.entries(employee.id, month), api.report(employee.id, month)])
+    if (!employeeId) return
+    const [list, rep] = await Promise.all([api.entries(month), api.report(month)])
     setEntries(list)
     setReport(rep)
-  }, [employee, month])
+  }, [employeeId, month])
 
   useEffect(() => {
-    reload().catch((e) => setError(e.message))
+    reload().catch((e) => e instanceof UnauthorizedError || setError(e.message))
   }, [reload])
+
+  const logout = async () => {
+    await api.logout().catch(() => {})
+    signOut()
+  }
 
   const remove = async (entry: Entry) => {
     if (!confirm(`ลบรายการวันที่ ${entry.date} ${entry.start.slice(0, 5)}-${entry.end.slice(0, 5)} ?`)) return
@@ -68,25 +76,25 @@ export default function App() {
     await reload()
   }
 
-  if (employees === null) return <div className="page">{error || 'กำลังโหลด...'}</div>
+  if (employee === undefined) return <div className="page">{error || 'กำลังโหลด...'}</div>
 
-  // First run (or the stored employee was deleted): set up the profile once.
-  if (!employee || showSettings) {
+  if (employee === null)
+    return (
+      <div className="page">
+        <Login onSignedIn={setEmployee} />
+      </div>
+    )
+
+  if (showSettings) {
     return (
       <div className="page">
         <Settings
           employee={employee}
-          employees={employees}
-          onSelect={(id) => {
-            selectEmployee(id)
+          onSaved={(e) => {
+            setEmployee(e)
             setShowSettings(false)
           }}
-          onSaved={async (e) => {
-            await loadEmployees()
-            selectEmployee(e.id)
-            setShowSettings(false)
-          }}
-          onClose={employee ? () => setShowSettings(false) : undefined}
+          onClose={() => setShowSettings(false)}
         />
       </div>
     )
@@ -108,6 +116,9 @@ export default function App() {
           </button>
           <button className="ghost" onClick={() => setShowSettings(true)} title="ตั้งค่า">
             {employee.nameTh} ({employee.nameEn}) ⚙
+          </button>
+          <button className="ghost" onClick={logout} title="ออกจากระบบ">
+            ออกจากระบบ
           </button>
         </div>
       </header>
@@ -145,7 +156,7 @@ export default function App() {
       <EntryTable
         entries={entries}
         report={report}
-        exportUrl={api.exportUrl(employee.id, month)}
+        exportUrl={api.exportUrl(month)}
         onEdit={setEditing}
         onDelete={(e) => remove(e).catch((err) => setError(err.message))}
         onError={setError}

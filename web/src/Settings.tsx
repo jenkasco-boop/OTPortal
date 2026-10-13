@@ -1,98 +1,83 @@
 import { useEffect, useState } from 'react'
-import { api, type Employee, type Holiday } from './api'
+import { api, type Employee, type Holiday, type Profile } from './api'
 
 interface Props {
-  employee: Employee | null
-  employees: Employee[]
-  onSelect: (id: number) => void
+  employee: Employee
   onSaved: (e: Employee) => void
-  onClose?: () => void
+  onClose: () => void
 }
 
-export default function Settings({ employee, employees, onSelect, onSaved, onClose }: Props) {
-  return (
-    <div className="settings">
-      <header className="topbar">
-        <h1>{employee ? 'ตั้งค่า' : 'OT Portal — เริ่มต้นใช้งาน'}</h1>
-        {onClose && (
-          <button className="ghost" onClick={onClose}>
-            ← กลับ
-          </button>
-        )}
-      </header>
-      {employees.length > 0 && (
-        <section className="card">
-          <div className="card-title">เลือกพนักงาน</div>
-          <div className="chips">
-            {employees.map((e) => (
-              <button key={e.id} className={`chip ${e.id === employee?.id ? 'active' : ''}`} onClick={() => onSelect(e.id)}>
-                {e.nameTh} ({e.nameEn})
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-      <ProfileForm key={employee?.id ?? 'new'} employee={employee} onSaved={onSaved} />
-      {employee && <ProfileForm key="add" employee={null} onSaved={onSaved} collapsed />}
-      <Holidays />
-    </div>
-  )
-}
-
-function ProfileForm({ employee, onSaved, collapsed }: { employee: Employee | null; onSaved: (e: Employee) => void; collapsed?: boolean }) {
-  const [open, setOpen] = useState(!collapsed)
-  const [nameTh, setNameTh] = useState(employee?.nameTh ?? '')
-  const [nameEn, setNameEn] = useState(employee?.nameEn ?? '')
-  const [breakMin, setBreakMin] = useState(employee?.defaultBreakMinutes ?? 60)
+export default function Settings({ employee, onSaved, onClose }: Props) {
+  const [profile, setProfile] = useState<Profile>(employee)
   const [error, setError] = useState('')
-
-  if (!open)
-    return (
-      <button className="ghost add-employee" onClick={() => setOpen(true)}>
-        + เพิ่มพนักงานคนอื่น
-      </button>
-    )
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      onSaved(await api.saveEmployee({ nameTh, nameEn, defaultBreakMinutes: breakMin }, employee?.id))
+      onSaved(await api.saveProfile(profile))
     } catch (err) {
       setError((err as Error).message)
     }
   }
 
   return (
-    <form className="card" onSubmit={save}>
-      <div className="card-title">{employee ? 'ข้อมูลของฉัน' : 'เพิ่มพนักงาน'}</div>
+    <div className="settings">
+      <header className="topbar">
+        <h1>ตั้งค่า</h1>
+        <button className="ghost" onClick={onClose}>
+          ← กลับ
+        </button>
+      </header>
+      <form className="card" onSubmit={save}>
+        <div className="card-title">ข้อมูลของฉัน</div>
+        <ProfileFields value={profile} onChange={setProfile} />
+        {error && <div className="alert">{error}</div>}
+        <div className="actions">
+          <button type="submit">บันทึก</button>
+        </div>
+      </form>
+      <Holidays />
+    </div>
+  )
+}
+
+/** Name (TH/EN) and default break; shared by Settings and the register form. */
+export function ProfileFields({ value, onChange }: { value: Profile; onChange: (p: Profile) => void }) {
+  const set = (change: Partial<Profile>) => onChange({ ...value, ...change })
+  return (
+    <>
       <div className="form-grid">
         <label>
           ชื่อ-นามสกุล (ไทย)
-          <input value={nameTh} onChange={(e) => setNameTh(e.target.value)} required />
+          <input value={value.nameTh} onChange={(e) => set({ nameTh: e.target.value })} required />
         </label>
         <label>
           ชื่อ EN (ใช้ตั้งชื่อไฟล์)
           <input
-            value={nameEn}
-            onChange={(e) => setNameEn(e.target.value.toUpperCase())}
+            value={value.nameEn}
+            onChange={(e) => set({ nameEn: e.target.value.toUpperCase() })}
             pattern="[A-Za-z0-9 ]+"
             placeholder="JENWIT"
             required
           />
         </label>
         <label>
-          พักกลางวัน (นาที)
-          <input type="number" min={0} step={5} value={breakMin} onChange={(e) => setBreakMin(Number(e.target.value))} />
+          พักต่อช่วง (นาที)
+          <input
+            type="number"
+            min={0}
+            max={60}
+            step={5}
+            value={value.defaultBreakMinutes}
+            onChange={(e) => set({ defaultBreakMinutes: Number(e.target.value) })}
+          />
         </label>
       </div>
       <p className="muted">
-        ไฟล์ Export: <b>OT_YYMM_{nameEn.replace(/[^A-Za-z0-9]/g, '') || 'NAME'}.xlsx</b> · หักเวลาพักอัตโนมัติเมื่อช่วงเวลาครอบ 12:00–13:00
+        ไฟล์ Export: <b>OT_YYMM_{value.nameEn.replace(/[^A-Za-z0-9]/g, '') || 'NAME'}.xlsx</b> · หักเวลาพักอัตโนมัติเมื่อช่วงเวลาครอบ
+        12:00–13:00 หรือ 18:00–19:00
       </p>
-      {error && <div className="alert">{error}</div>}
-      <div className="actions">
-        <button type="submit">บันทึก</button>
-      </div>
-    </form>
+    </>
   )
 }
 

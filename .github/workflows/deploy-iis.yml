@@ -102,6 +102,11 @@ jobs:
         shell: powershell
         if: ${{ vars.IIS_SITE_URL != '' }}
         run: |
-          $r = Invoke-WebRequest "${{ vars.IIS_SITE_URL }}/api/employees" -UseBasicParsing -TimeoutSec 60
-          if ($r.StatusCode -ne 200) { throw "Smoke test failed: $($r.StatusCode)" }
-          Write-Host "OK $($r.StatusCode)"
+          # /api/me needs a login: 401 means the app started and the API answers
+          try {
+            $code = (Invoke-WebRequest "${{ vars.IIS_SITE_URL }}/api/me" -UseBasicParsing -TimeoutSec 60).StatusCode
+          } catch {
+            $code = [int]$_.Exception.Response.StatusCode
+          }
+          if ($code -ne 401) { throw "Smoke test failed: $code" }
+          Write-Host "OK $code"

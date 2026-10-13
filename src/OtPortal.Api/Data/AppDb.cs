@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 
 namespace OtPortal.Api.Data;
@@ -9,6 +10,9 @@ public class Employee
     public required string NameEn { get; set; }
     public required string NameTh { get; set; }
     public int DefaultBreakMinutes { get; set; }
+    /// <summary>Login name (lower case). Null for employees created before login existed, until someone registers with that NameEn.</summary>
+    [JsonIgnore] public string? Username { get; set; }
+    [JsonIgnore] public string? PasswordHash { get; set; }
 }
 
 public class OtEntry
@@ -55,6 +59,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.Entity<Employee>().HasIndex(e => e.NameEn).IsUnique();
+        b.Entity<Employee>().HasIndex(e => e.Username).IsUnique();
         b.Entity<OtEntry>().HasIndex(e => new { e.EmployeeId, e.Date });
         b.Entity<OtEntry>().HasOne<Employee>().WithMany().HasForeignKey(e => e.EmployeeId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Holiday>().HasKey(h => h.Date);

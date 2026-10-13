@@ -32,7 +32,6 @@ export interface OtResult {
 }
 
 export interface EntryInput {
-  employeeId: number
   date: string // yyyy-MM-dd
   start: string // HH:mm
   end: string
@@ -42,7 +41,7 @@ export interface EntryInput {
   remark: string
 }
 
-export interface Entry extends Omit<EntryInput, 'employeeId' | 'project' | 'remark'> {
+export interface Entry extends Omit<EntryInput, 'project' | 'remark'> {
   id: number
   project: string | null
   remark: string | null
@@ -61,7 +60,6 @@ export interface SavedPlace {
 }
 
 export interface PlaceInput {
-  employeeId: number
   placeId: string
   lat: number
   lng: number
@@ -80,11 +78,24 @@ export interface Report {
   totals: { ot10: number; ot15: number; ot30: number; otxTime: number }
 }
 
+/** Thrown when the session is missing or expired; App shows the login page. */
+export class UnauthorizedError extends Error {}
+
+let onUnauthorized: () => void = () => {}
+export const setUnauthorizedHandler = (handler: () => void) => {
+  onUnauthorized = handler
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}/${path}`, {
     ...init,
     headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
   })
+  // A 401 from /auth/login is a wrong password, not an expired session.
+  if (res.status === 401 && !path.startsWith('auth/')) {
+    onUnauthorized()
+    throw new UnauthorizedError('กรุณาเข้าสู่ระบบใหม่')
+  }
   if (!res.ok) {
     const text = await res.text()
     let message = text
@@ -104,26 +115,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
 
+export type Profile = Omit<Employee, 'id'>
+
 export const api = {
-  employees: () => request<Employee[]>('employees'),
-  saveEmployee: (e: Omit<Employee, 'id'>, id?: number) =>
-    request<Employee>(id ? `employees/${id}` : 'employees', json(id ? 'PUT' : 'POST', e)),
+  login: (username: string, password: string) => request<Employee>('auth/login', json('POST', { username, password })),
+  register: (username: string, password: string, profile: Profile) =>
+    request<Employee>('auth/register', json('POST', { username, password, profile })),
+  logout: () => request<void>('auth/logout', { method: 'POST' }),
+  me: () => request<Employee>('me'),
+  saveProfile: (p: Profile) => request<Employee>('me', json('PUT', p)),
 
   holidays: (year: number) => request<Holiday[]>(`holidays?year=${year}`),
   saveHolidays: (items: Holiday[]) => request<void>('holidays', json('POST', items)),
   deleteHoliday: (date: string) => request<void>(`holidays/${date}`, { method: 'DELETE' }),
 
-  entries: (employeeId: number, month: string) => request<Entry[]>(`entries?employeeId=${employeeId}&month=${month}`),
+  entries: (month: string) => request<Entry[]>(`entries?month=${month}`),
   preview: (e: EntryInput) => request<OtResult>('preview', json('POST', e)),
   saveEntry: (e: EntryInput, id?: number) => request<Entry>(id ? `entries/${id}` : 'entries', json(id ? 'PUT' : 'POST', e)),
   deleteEntry: (id: number) => request<void>(`entries/${id}`, { method: 'DELETE' }),
 
-  places: (employeeId: number) => request<SavedPlace[]>(`places?employeeId=${employeeId}`),
+  places: () => request<SavedPlace[]>('places'),
   /** Upsert; returns undefined when every field was cleared (the place is deleted). */
   savePlace: (p: PlaceInput) => request<SavedPlace | undefined>('places', json('PUT', p)),
 
-  report: (employeeId: number, month: string) => request<Report>(`report?employeeId=${employeeId}&month=${month}`),
-  exportUrl: (employeeId: number, month: string) => `${BASE}/export?employeeId=${employeeId}&month=${month}`,
+  report: (month: string) => request<Report>(`report?month=${month}`),
+  exportUrl: (month: string) => `${BASE}/export?month=${month}`,
 }
 
 // ---------- formatting ----------

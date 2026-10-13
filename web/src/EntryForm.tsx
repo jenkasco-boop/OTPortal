@@ -70,7 +70,7 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
   const ranges = useMemo(() => recentRanges(recent), [recent])
   const projects = useMemo(() => [...new Set(recent.map((e) => e.project).filter((p): p is string => !!p))], [recent])
 
-  const input: EntryInput = { employeeId: employee.id, date, start, end, breakMinutes: effectiveBreak, support, project, remark }
+  const input: EntryInput = { date, start, end, breakMinutes: effectiveBreak, support, project, remark }
 
   useEffect(() => {
     if (!date || !start || !end) return

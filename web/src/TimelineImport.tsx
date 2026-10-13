@@ -75,8 +75,8 @@ export default function TimelineImport({ employee, month, entries, onImported, o
   const range = periodRange(month)
 
   useEffect(() => {
-    api.places(employee.id).then(setSaved).catch((e) => setError(e.message))
-  }, [employee.id])
+    api.places().then(setSaved).catch((e) => setError(e.message))
+  }, [])
 
   useEffect(() => {
     const years = [...new Set([range.from.slice(0, 4), range.to.slice(0, 4)])].map(Number)
@@ -190,7 +190,7 @@ export default function TimelineImport({ employee, month, entries, onImported, o
   const savePlace = async (p: Place, change: Partial<PlaceChoice>, current = choices[p.id]) => {
     if (p.lat === null || p.lng === null) return
     const body = { name: current?.name ?? '', project: current?.project ?? '', address: current?.address ?? '', ...change }
-    const result = await api.savePlace({ employeeId: employee.id, placeId: p.id, lat: p.lat, lng: p.lng, ...body })
+    const result = await api.savePlace({ placeId: p.id, lat: p.lat, lng: p.lng, ...body })
     setSaved((prev) => {
       const old = matchPlace(prev, p.id, p.lat, p.lng)
       const rest = prev.filter((s) => s !== old)
@@ -271,7 +271,6 @@ export default function TimelineImport({ employee, month, entries, onImported, o
       const r = rows[s.key]
       try {
         await api.saveEntry({
-          employeeId: employee.id,
           date: s.date,
           start: r.start,
           end: r.end,

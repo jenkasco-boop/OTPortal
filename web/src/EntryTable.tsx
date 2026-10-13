@@ -22,6 +22,7 @@ export default function EntryTable({ entries, report, exportUrl, onEdit, onDelet
     setDownloading(true)
     try {
       const res = await fetch(exportUrl)
+      if (res.status === 401) throw new Error('กรุณาเข้าสู่ระบบใหม่')
       if (!res.ok) throw new Error(`ดาวน์โหลด Excel ไม่สำเร็จ (${res.status})`)
       const url = URL.createObjectURL(await res.blob())
       const a = document.createElement('a')
