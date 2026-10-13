@@ -148,6 +148,7 @@ export default function App() {
         exportUrl={api.exportUrl(employee.id, month)}
         onEdit={setEditing}
         onDelete={(e) => remove(e).catch((err) => setError(err.message))}
+        onError={setError}
       />
     </div>
   )

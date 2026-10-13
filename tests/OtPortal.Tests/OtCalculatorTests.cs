@@ -87,6 +87,29 @@ public class OtCalculatorTests
     }
 
     [Fact]
+    public void Lunch_and_dinner_breaks_come_out_of_their_own_windows()
+    {
+        // 12:00-13:00 from the 1.0 day part, 18:00-19:00 from the 3.0 evening part
+        var r = Calc(Sat, "08:30", "22:00", brk: 120);
+        Assert.Equal([(1.0m, 510), (3.0m, 180)], Paid(r));
+    }
+
+    [Fact]
+    public void Weekday_lunch_in_working_hours_does_not_reduce_evening_ot()
+    {
+        var r = Calc(Mon, "09:00", "21:00", brk: 120);
+        Assert.Equal([(1.5m, 120)], Paid(r));   // 18:00-21:00 minus dinner only
+        Assert.DoesNotContain(r.Warnings, w => w.Contains("เกิน"));
+    }
+
+    [Fact]
+    public void Partly_covered_break_window_falls_back_to_day_first()
+    {
+        var r = Calc(Sat, "08:30", "18:30", brk: 90);   // 18:00-19:00 not fully covered
+        Assert.Equal([(1.0m, 480), (3.0m, 30)], Paid(r));
+    }
+
+        [Fact]
     public void Break_larger_than_ot_warns()
     {
         var r = Calc(Mon, "18:00", "18:30", brk: 45);

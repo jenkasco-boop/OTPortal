@@ -1,42 +1,45 @@
 :root {
-  --bg: #f4f6f9;
+  /* orange + black theme */
+  --bg: #f5f4f2;
   --card: #ffffff;
-  --text: #1d2433;
-  --muted: #6b7385;
-  --border: #dfe3ea;
-  --primary: #2563eb;
-  --primary-text: #ffffff;
-  --danger: #c2410c;
-  --r10: #0f766e;
-  --r10-bg: #ccfbf1;
-  --r15: #1d4ed8;
-  --r15-bg: #dbeafe;
+  --text: #18181b;
+  --muted: #6b6560;
+  --border: #e4e0db;
+  --primary: #f97316;
+  --primary-text: #111111;
+  --danger: #dc2626;
+  --r10: #44403c;
+  --r10-bg: #e7e5e4;
+  --r15: #b45309;
+  --r15-bg: #fef3c7;
   --r30: #b91c1c;
   --r30-bg: #fee2e2;
-  --none-bg: #eef0f4;
-  --warn-bg: #fff7e0;
+  --none-bg: #efedea;
+  --warn-bg: #fff4e0;
   --warn: #8a5a00;
+  --header-bg: #111111;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #12151c;
-    --card: #1b2029;
-    --text: #e6e9ef;
-    --muted: #9aa3b5;
-    --border: #2d3442;
-    --primary: #4f8cff;
-    --danger: #fb923c;
-    --r10: #5eead4;
-    --r10-bg: #0f3b38;
-    --r15: #93c5fd;
-    --r15-bg: #1e3358;
-    --r30: #fca5a5;
-    --r30-bg: #4a1f22;
-    --none-bg: #262c38;
+    --bg: #0b0b0c;
+    --card: #17171a;
+    --text: #ececec;
+    --muted: #a19a93;
+    --border: #2c2b2a;
+    --primary: #fb923c;
+    --danger: #f87171;
+    --r10: #d6d3d1;
+    --r10-bg: #292524;
+    --r15: #fbbf24;
+    --r15-bg: #3b2a0a;
+    --r30: #f87171;
+    --r30-bg: #3f1515;
+    --none-bg: #232220;
     --warn-bg: #3a2f12;
     --warn: #f5c56b;
+    --header-bg: #000000;
     color-scheme: dark;
   }
 }
@@ -53,8 +56,14 @@ body {
 
 .page { max-width: 1040px; margin: 0 auto; padding: 16px; }
 
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-.topbar h1 { font-size: 22px; margin: 0; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+  padding: 12px 16px; border-radius: 10px; border-bottom: 3px solid var(--primary);
+  /* black bar: re-point the tokens so inputs and ghost buttons inside it follow */
+  background: var(--header-bg); --text: #f5f5f5; --muted: #b5aea7; --border: #3a3836; --card: #1c1c1e; color: var(--text);
+  color-scheme: dark;
+}
+.topbar h1 { font-size: 22px; margin: 0; color: var(--primary); }
 .topbar-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
@@ -62,6 +71,8 @@ body {
 
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .form-grid .remark { grid-column: span 2; }
+/* same height for text, number, date and time boxes (the native date box renders taller) */
+.form-grid input { width: 100%; min-width: 0; height: 36px; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 label small { color: var(--muted); font-weight: normal; }
 
@@ -127,7 +138,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .totals .highlight { background: var(--r15-bg); }
 .totals .highlight b { color: var(--r15); }
 
-.holiday-list { display: flex; flex-wrap: wrap; gap: 6px; }
+td.nowrap { white-space: nowrap; width: 1%; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 560px) {
   .form-grid .remark { grid-column: span 1; }

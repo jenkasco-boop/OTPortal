@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { duration, hhmm, shortTime, thDay, type Entry, type Report } from './api'
 
 interface Props {
@@ -6,20 +7,42 @@ interface Props {
   exportUrl: string
   onEdit: (e: Entry) => void
   onDelete: (e: Entry) => void
+  onError: (message: string) => void
 }
 
 const fmtDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
-export default function EntryTable({ entries, report, exportUrl, onEdit, onDelete }: Props) {
+export default function EntryTable({ entries, report, exportUrl, onEdit, onDelete, onError }: Props) {
   const t = report?.totals
+  const [downloading, setDownloading] = useState(false)
+  const fileName = `${report?.fileName ?? 'Export'}.xlsx`
+
+  // Fetch instead of a plain link so the button can show progress and block double clicks.
+  const download = async () => {
+    setDownloading(true)
+    try {
+      const res = await fetch(exportUrl)
+      if (!res.ok) throw new Error(`ดาวน์โหลด Excel ไม่สำเร็จ (${res.status})`)
+      const url = URL.createObjectURL(await res.blob())
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      onError((err as Error).message)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <section className="card">
       <div className="card-title">
         รายการเดือนนี้ <span className="muted">{entries.length} รายการ</span>
-        <a className={`button export ${entries.length ? '' : 'disabled'}`} href={entries.length ? exportUrl : undefined} download>
-          ⬇ {report?.fileName ?? 'Export'}.xlsx
-        </a>
+        <button type="button" className="export" onClick={download} disabled={!entries.length || downloading}>
+          {downloading ? 'กำลังโหลด...' : `⬇ ${fileName}`}
+        </button>
       </div>
 
       {entries.length === 0 ? (

@@ -137,12 +137,23 @@ export const toIsoDate = (d: Date) =>
 
 export const shortTime = (t: string) => t.slice(0, 5)
 
-const LUNCH_START = '12:00'
-const LUNCH_END = '13:00'
+/** Break windows in minutes from midnight: lunch 12:00-13:00, dinner 18:00-19:00 (same as the API). */
+const BREAK_WINDOWS = [
+  [12 * 60, 13 * 60],
+  [18 * 60, 19 * 60],
+]
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
 
-/** Default break = profile break when the range covers lunch (12:00-13:00), else 0. */
-export const autoBreak = (start: string, end: string, profileBreak: number) =>
-  start <= LUNCH_START && (end >= LUNCH_END || end <= start) ? profileBreak : 0
+/** Default break = profile break (max 60) for each break window the range fully covers; an end not after start is next day. */
+export function autoBreak(start: string, end: string, profileBreak: number) {
+  const s = toMin(start)
+  let e = toMin(end)
+  if (e <= s) e += 24 * 60
+  let covered = 0
+  for (let day = 0; day * 24 * 60 < e; day++)
+    for (const [ws, we] of BREAK_WINDOWS) if (day * 1440 + ws >= s && day * 1440 + we <= e) covered++
+  return covered * Math.min(profileBreak, 60)
+}
 
 // ---------- OT period ----------
 /** OT period "yyyy-MM" runs from the 21st of the previous month to the 20th of that month (same as the API). */

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, thDay, type Employee, type Holiday } from './api'
+import { api, type Employee, type Holiday } from './api'
 
 interface Props {
   employee: Employee | null
@@ -137,17 +137,36 @@ function Holidays() {
         วันหยุดนักขัตฤกษ์ (ใช้ร่วมกันทุกคน)
         <input type="number" className="year" value={year} onChange={(e) => setYear(Number(e.target.value))} />
       </div>
-      <div className="holiday-list">
-        {items.length === 0 && <span className="muted">ยังไม่มีวันหยุดของปีนี้</span>}
-        {items.map((h) => (
-          <span key={h.date} className="chip">
-            {thDay(h.date)} {h.date.slice(8, 10)}/{h.date.slice(5, 7)} {h.name}
-            <button className="x" onClick={() => api.deleteHoliday(h.date).then(load)} title="ลบ">
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <p className="muted">ยังไม่มีวันหยุดของปีนี้</p>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>วันเดือนปี</th>
+                <th>ชื่อวันหยุด</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((h) => (
+                <tr key={h.date}>
+                  <td className="nowrap">
+                    {h.date.slice(8, 10)}/{h.date.slice(5, 7)}/{h.date.slice(0, 4)}
+                  </td>
+                  <td>{h.name}</td>
+                  <td className="row-actions">
+                    <button className="ghost small danger" onClick={() => api.deleteHoliday(h.date).then(load)}>
+                      ลบ
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <textarea
         rows={3}
         value={bulk}

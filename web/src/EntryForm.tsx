@@ -112,7 +112,9 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
 
       <div className="form-grid">
         <label>
-          วันที่ <small>({date && thDay(date)})</small>
+          <span>
+            วันที่ <small>({date && thDay(date)})</small>
+          </span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         </label>
         <label>
@@ -124,7 +126,9 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
           <TimeInput value={end} onChange={setEnd} required />
         </label>
         <label>
-          พัก (นาที) {breakMinutes === null && <small>อัตโนมัติ</small>}
+          <span>
+            พัก (นาที) {breakMinutes === null && <small>อัตโนมัติ</small>}
+          </span>
           <input
             type="number"
             min={0}
