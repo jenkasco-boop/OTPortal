@@ -28,9 +28,10 @@ jobs:
       - name: Check config
         shell: powershell
         run: |
-          if (-not $env:DEPLOY_TARGET) { throw "ยังไม่ได้ตั้ง repository variable IIS_DEPLOY_PATH" }
-          if ($env:DEPLOY_TARGET -match '^[A-Za-z]:\?$' -or $env:DEPLOY_TARGET -match '\wwwroot\?$') {
-            throw "IIS_DEPLOY_PATH '$env:DEPLOY_TARGET' กว้างเกินไป ต้องเป็นโฟลเดอร์เฉพาะของ OT Portal"
+          # Windows PowerShell 5.1 reads this script as ANSI, so Thai text inside strings breaks parsing - keep strings ASCII
+          if (-not $env:DEPLOY_TARGET) { throw "DEPLOY_TARGET is not set" }
+          if ($env:DEPLOY_TARGET -match '^[A-Za-z]:\\?$' -or $env:DEPLOY_TARGET -match '\\wwwroot\\?$') {
+            throw "DEPLOY_TARGET '$env:DEPLOY_TARGET' is too broad - must be a folder dedicated to OT Portal"
           }
 
       - uses: actions/checkout@v4
@@ -67,7 +68,7 @@ jobs:
           $offline = Join-Path $env:DEPLOY_TARGET "app_offline.htm"
 
           # app_offline.htm ทำให้ ASP.NET Core Module ปิดแอปและปลดล็อกไฟล์ dll
-          Set-Content $offline '<html><body style="font-family:sans-serif"><h2>OT Portal กำลังอัปเดต กรุณารอสักครู่...</h2></body></html>' -Encoding UTF8
+          Set-Content $offline '<html><body style="font-family:sans-serif"><h2>OT Portal &#3585;&#3635;&#3621;&#3633;&#3591;&#3629;&#3633;&#3611;&#3648;&#3604;&#3605; &#3585;&#3619;&#3640;&#3603;&#3634;&#3619;&#3629;&#3626;&#3633;&#3585;&#3588;&#3619;&#3641;&#3656;...</h2></body></html>' -Encoding UTF8
           if ($env:APP_POOL) {
             Import-Module WebAdministration
             if ((Get-WebAppPoolState $env:APP_POOL).Value -ne 'Stopped') { Stop-WebAppPool $env:APP_POOL }
