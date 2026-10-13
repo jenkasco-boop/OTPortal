@@ -15,7 +15,6 @@ concurrency:
 
 env:
   DEPLOY_TARGET: 'C:\inetpub\wwwroot\KascoOT'
-  APP_POOL: 'web-kascoOT'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
 
 jobs:
@@ -84,13 +83,10 @@ jobs:
           New-Item -ItemType Directory -Force $env:DEPLOY_TARGET | Out-Null
           $offline = Join-Path $env:DEPLOY_TARGET "app_offline.htm"
 
-          # app_offline.htm ทำให้ ASP.NET Core Module ปิดแอปและปลดล็อกไฟล์ dll
+          # app_offline.htm ทำให้ ASP.NET Core Module ปิดแอปและปลดล็อกไฟล์ dll เอง
+          # (ไม่ stop/start app pool เพราะ runner service ไม่มีสิทธิ์อ่าน config ของ IIS)
           Set-Content $offline '<html><body style="font-family:sans-serif"><h2>OT Portal &#3585;&#3635;&#3621;&#3633;&#3591;&#3629;&#3633;&#3611;&#3648;&#3604;&#3605; &#3585;&#3619;&#3640;&#3603;&#3634;&#3619;&#3629;&#3626;&#3633;&#3585;&#3588;&#3619;&#3641;&#3656;...</h2></body></html>' -Encoding UTF8
-          if ($env:APP_POOL) {
-            Import-Module WebAdministration
-            if ((Get-WebAppPoolState $env:APP_POOL).Value -ne 'Stopped') { Stop-WebAppPool $env:APP_POOL }
-          }
-          Start-Sleep -Seconds 3
+          Start-Sleep -Seconds 5
 
           try {
             # App_Data = ฐานข้อมูล SQLite ห้ามลบ / app_offline.htm ลบเองตอนท้าย
@@ -99,7 +95,6 @@ jobs:
             $global:LASTEXITCODE = 0
           }
           finally {
-            if ($env:APP_POOL) { Start-WebAppPool $env:APP_POOL }
             Remove-Item $offline -ErrorAction SilentlyContinue
           }
 
