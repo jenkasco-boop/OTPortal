@@ -1,0 +1,1 @@
+curl "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=13.7462&lon=100.5347&zoom=18&accept-language=th" --header "User-Agent: OTPortal/1.0"

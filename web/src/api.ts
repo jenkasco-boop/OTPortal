@@ -38,13 +38,36 @@ export interface EntryInput {
   end: string
   breakMinutes: number
   support: boolean
+  project: string
   remark: string
 }
 
-export interface Entry extends Omit<EntryInput, 'employeeId' | 'remark'> {
+export interface Entry extends Omit<EntryInput, 'employeeId' | 'project' | 'remark'> {
   id: number
+  project: string | null
   remark: string | null
   result: OtResult
+}
+
+/** A Google Timeline place the employee named; matched again by place id or within 100 m. */
+export interface SavedPlace {
+  id: number
+  placeId: string | null
+  lat: number
+  lng: number
+  name: string | null
+  project: string | null
+  address: string | null
+}
+
+export interface PlaceInput {
+  employeeId: number
+  placeId: string
+  lat: number
+  lng: number
+  name: string
+  project: string
+  address: string
 }
 
 export interface Holiday {
@@ -73,7 +96,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(message || res.statusText)
   }
-  return res.status === 204 ? (undefined as T) : res.json()
+  if (res.status === 204) return undefined as T
+  if (!res.headers.get('content-type')?.includes('json'))
+    throw new Error(`API ${path} ไม่ได้ตอบเป็น JSON (API อาจเป็นเวอร์ชันเก่า ลองรีสตาร์ท)`)
+  return res.json()
 }
 
 const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) })
@@ -92,6 +118,10 @@ export const api = {
   saveEntry: (e: EntryInput, id?: number) => request<Entry>(id ? `entries/${id}` : 'entries', json(id ? 'PUT' : 'POST', e)),
   deleteEntry: (id: number) => request<void>(`entries/${id}`, { method: 'DELETE' }),
 
+  places: (employeeId: number) => request<SavedPlace[]>(`places?employeeId=${employeeId}`),
+  /** Upsert; returns undefined when every field was cleared (the place is deleted). */
+  savePlace: (p: PlaceInput) => request<SavedPlace | undefined>('places', json('PUT', p)),
+
   report: (employeeId: number, month: string) => request<Report>(`report?employeeId=${employeeId}&month=${month}`),
   exportUrl: (employeeId: number, month: string) => `${BASE}/export?employeeId=${employeeId}&month=${month}`,
 }
@@ -106,6 +136,30 @@ export const toIsoDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 export const shortTime = (t: string) => t.slice(0, 5)
+
+const LUNCH_START = '12:00'
+const LUNCH_END = '13:00'
+
+/** Default break = profile break when the range covers lunch (12:00-13:00), else 0. */
+export const autoBreak = (start: string, end: string, profileBreak: number) =>
+  start <= LUNCH_START && (end >= LUNCH_END || end <= start) ? profileBreak : 0
+
+// ---------- OT period ----------
+/** OT period "yyyy-MM" runs from the 21st of the previous month to the 20th of that month (same as the API). */
+export const CUTOFF_DAY = 20
+
+export function periodOf(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return toIsoDate(new Date(y, m - 1 + (d > CUTOFF_DAY ? 1 : 0), 1)).slice(0, 7)
+}
+
+export function periodRange(month: string) {
+  const [y, m] = month.split('-').map(Number)
+  return { from: toIsoDate(new Date(y, m - 2, CUTOFF_DAY + 1)), to: toIsoDate(new Date(y, m - 1, CUTOFF_DAY)) }
+}
+
+const thMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+export const thShortDate = (iso: string) => `${Number(iso.slice(8, 10))} ${thMonths[Number(iso.slice(5, 7)) - 1]}`
 
 const thDays = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
 export const thDay = (iso: string) => thDays[new Date(iso + 'T00:00:00').getDay()]

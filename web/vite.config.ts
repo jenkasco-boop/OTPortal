@@ -10,6 +10,8 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    port: 5173,
+    strictPort: true, // F5 opens this exact URL
     proxy: { '/api': 'http://localhost:5080' },
   },
 })

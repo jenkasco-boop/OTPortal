@@ -12,7 +12,7 @@ public class ExcelExporterTests
         var e = new Employee { Id = 1, NameEn = "JENWIT", NameTh = "เจนวิทย์" };
         var entries = new[]
         {
-            new OtEntry { Id = 1, EmployeeId = 1, Date = new(2026, 10, 17), Start = new(7, 0), End = new(20, 0), BreakMinutes = 60, Remark = "Go-live" },
+            new OtEntry { Id = 1, EmployeeId = 1, Date = new(2026, 10, 17), Start = new(7, 0), End = new(20, 0), BreakMinutes = 60, Project = "WMS", Remark = "Go-live" },
             new OtEntry { Id = 2, EmployeeId = 1, Date = new(2026, 10, 12), Start = new(18, 0), End = new(20, 0) },
         };
         return OtReport.Build(e, 2026, 10, entries, _ => false);
@@ -38,6 +38,33 @@ public class ExcelExporterTests
         Assert.Equal("รวม", ws.Cell(8, 12).GetString());
         Assert.Equal(510, ws.Cell(8, 13).GetDouble());
         Assert.Equal(210, ws.Cell(8, 15).GetDouble());
+        Assert.DoesNotContain(ws.CellsUsed(), c => c.GetString().Contains("{{"));
+    }
+
+    [Fact]
+    public void Company_template_fills_request_and_approved_sections()
+    {
+        var template = Path.Combine(AppContext.BaseDirectory, "Templates", "ot-template.xlsx");
+        var ws = Open(new ExcelExporter(template).Export(SampleReport()));
+
+        Assert.Equal("OT-October", ws.Name);
+
+        // Request OT: one row per entry (2), starting at row 4
+        Assert.Equal("Project", ws.Cell("C3").GetString());
+        Assert.Equal(1, ws.Cell("A4").GetDouble());
+        Assert.Equal("12/10/2026", ws.Cell("E4").GetString());
+        Assert.Equal("WMS", ws.Cell("C5").GetString());
+        Assert.Equal("Go-live", ws.Cell("D5").GetString());
+        Assert.Equal("OT ที่ตรวจรับแล้ว", ws.Cell("A7").GetString());
+
+        // Approved: header row 8, 4 OT lines from row 9, totals below
+        Assert.Equal("OT 1.5", ws.Cell("N8").GetString());
+        Assert.Equal("Monday", ws.Cell("D9").GetString());
+        Assert.Equal(120, ws.Cell("N9").GetDouble());
+        Assert.Equal("WMS", ws.Cell("C12").GetString());
+        Assert.Equal("Go-live", ws.Cell("Q12").GetString());
+        Assert.Equal("รวม", ws.Cell("L13").GetString());
+        Assert.Equal(180 + 270 + 510 + 360, ws.Cell("P13").GetDouble());
         Assert.DoesNotContain(ws.CellsUsed(), c => c.GetString().Contains("{{"));
     }
 

@@ -4,7 +4,7 @@
 
 .PREREQUISITES
   - IIS with the WebAdministration module
-  - ASP.NET Core 10 Hosting Bundle: https://dotnet.microsoft.com/download/dotnet/10.0  (run iisreset after installing)
+  - ASP.NET Core 9 Hosting Bundle: https://dotnet.microsoft.com/download/dotnet/9.0  (run iisreset after installing)
 
 .EXAMPLE
   # Separate site on port 8085

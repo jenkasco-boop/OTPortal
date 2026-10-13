@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEPLOY_TARGET: ${{ vars.IIS_DEPLOY_PATH }}
-  APP_POOL: ${{ vars.IIS_APP_POOL }}
+  DEPLOY_TARGET: 'C:\inetpub\wwwroot\KascoOT'
+  APP_POOL: 'web-kascoOT'
   DOTNET_CLI_TELEMETRY_OPTOUT: '1'
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 9.0.x
 
       - uses: actions/setup-node@v4
         with:

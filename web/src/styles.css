@@ -133,3 +133,28 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .form-grid .remark { grid-column: span 1; }
   .check { margin-left: 0; }
 }
+
+.period { flex-direction: row; align-items: center; gap: 8px; }
+
+.timeline h3 { font-size: 15px; margin: 16px 0 8px; }
+.timeline .close { margin-left: auto; }
+.timeline td input:not([type='checkbox']) { min-width: 0; width: 100%; }
+.timeline tr.muted td { color: var(--muted); }
+label.inline { flex-direction: row; align-items: center; gap: 6px; }
+.time-pair { display: flex; gap: 4px; }
+.alert.pre { white-space: pre-line; }
+.time-input { width: 100%; min-width: 64px; font-variant-numeric: tabular-nums; }
+.timeline h3 .ghost { margin-left: 8px; }
+.place-cell { min-width: 220px; }
+.place-name { display: flex; gap: 6px; align-items: center; }
+.time-input.invalid { border-color: var(--danger); outline-color: var(--danger); background: var(--r30-bg); }
+.warn-text { color: var(--danger); font-size: 13px; align-self: center; }
+
+.day-list { max-height: 480px; overflow-y: auto; }
+.day-list thead th { position: sticky; top: 0; z-index: 2; background: var(--card); }
+.day-list .day-row td { background: var(--none-bg); font-weight: 600; }
+.day-list .visit td { padding-top: 4px; padding-bottom: 4px; }
+.day-list .visit:not(.work) td { color: var(--muted); }
+.day-list .visit-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.place-settings { margin-top: 12px; }
+.place-settings summary { cursor: pointer; color: var(--muted); font-size: 14px; }

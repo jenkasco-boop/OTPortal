@@ -7,6 +7,7 @@ public sealed record OtLine(
     int No,
     int EntryId,
     string Name,
+    string Project,
     string Special,       // "", "Support", "Holiday"
     string Day,           // Monday..Sunday
     DateOnly Date,
@@ -23,10 +24,25 @@ public sealed record OtLine(
     decimal OtxTime,
     string Remark);
 
+/// <summary>One row of the "Request OT" section of the company form: one per entry.</summary>
+public sealed record OtRequestLine(int No, int EntryId, string Name, string Project, string Detail, DateOnly Date);
+
 public sealed record OtTotals(decimal Ot10, decimal Ot15, decimal Ot30, decimal OtxTime);
 
 public sealed record OtMonthReport(string FileName, Employee Employee, int Year, int Month,
-    IReadOnlyList<OtLine> Lines, OtTotals Totals);
+    IReadOnlyList<OtRequestLine> Requests, IReadOnlyList<OtLine> Lines, OtTotals Totals);
+
+/// <summary>OT is paid per period: period "yyyy-MM" runs from the 21st of the previous month to the 20th of that month.</summary>
+public static class OtPeriod
+{
+    public const int CutoffDay = 20;
+
+    public static (DateOnly From, DateOnly ToExclusive) Range(int year, int month)
+    {
+        var toExclusive = new DateOnly(year, month, CutoffDay + 1);
+        return (toExclusive.AddMonths(-1), toExclusive);
+    }
+}
 
 public static class OtReport
 {
@@ -39,9 +55,12 @@ public static class OtReport
     public static OtMonthReport Build(Employee employee, int year, int month, IEnumerable<OtEntry> entries,
         Func<DateOnly, bool> isHoliday)
     {
+        var requests = new List<OtRequestLine>();
         var lines = new List<OtLine>();
         foreach (var entry in entries.OrderBy(e => e.Date).ThenBy(e => e.Start))
         {
+            requests.Add(new OtRequestLine(requests.Count + 1, entry.Id, employee.NameTh, entry.Project ?? "", entry.Remark ?? "", entry.Date));
+
             var result = OtCalculator.Calculate(entry.Date, entry.Start, entry.End, entry.BreakMinutes, entry.Support, isHoliday);
             foreach (var s in result.Paid)
             {
@@ -50,6 +69,7 @@ public static class OtReport
                     No: lines.Count + 1,
                     EntryId: entry.Id,
                     Name: employee.NameTh,
+                    Project: entry.Project ?? "",
                     Special: special,
                     Day: s.Date.DayOfWeek.ToString(),
                     Date: s.Date,
@@ -69,7 +89,7 @@ public static class OtReport
         }
 
         var totals = new OtTotals(lines.Sum(l => l.Ot10), lines.Sum(l => l.Ot15), lines.Sum(l => l.Ot30), lines.Sum(l => l.OtxTime));
-        return new OtMonthReport(FileName(employee, year, month), employee, year, month, lines, totals);
+        return new OtMonthReport(FileName(employee, year, month), employee, year, month, requests, lines, totals);
     }
 
     private static string Hhmm(int minutes) => minutes >= 1440 ? "24:00" : $"{minutes / 60:00}:{minutes % 60:00}";

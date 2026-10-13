@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import TimeInput from './TimeInput'
 import {
   api,
+  autoBreak,
   dayTypeLabel,
   duration,
   hhmm,
+  periodOf,
+  periodRange,
   shortTime,
   thDay,
   toIsoDate,
@@ -22,17 +26,11 @@ interface Props {
   onCancel: () => void
 }
 
-const LUNCH_START = '12:00'
-const LUNCH_END = '13:00'
-
-/** Default break = profile break when the range covers lunch (12:00-13:00), else 0. */
-const autoBreak = (start: string, end: string, profileBreak: number) =>
-  start <= LUNCH_START && (end >= LUNCH_END || end <= start) ? profileBreak : 0
 
 function defaultDate(month: string, recent: Entry[]) {
   const today = toIsoDate(new Date())
-  if (today.startsWith(month)) return today
-  return recent.at(-1)?.date ?? `${month}-01`
+  if (periodOf(today) === month) return today
+  return recent.at(-1)?.date ?? periodRange(month).from
 }
 
 function recentRanges(recent: Entry[]) {
@@ -61,6 +59,8 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
   const [end, setEnd] = useState(shortTime(editing?.end ?? last?.end ?? '21:00'))
   const [breakMinutes, setBreakMinutes] = useState<number | null>(editing ? editing.breakMinutes : null) // null = auto
   const [support, setSupport] = useState(editing?.support ?? false)
+  // New entries reuse the last project: OT usually continues on the same one.
+  const [project, setProject] = useState(editing ? (editing.project ?? '') : (last?.project ?? ''))
   const [remark, setRemark] = useState(editing?.remark ?? '')
   const [preview, setPreview] = useState<OtResult | null>(null)
   const [error, setError] = useState('')
@@ -68,8 +68,9 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
 
   const effectiveBreak = breakMinutes ?? autoBreak(start, end, employee.defaultBreakMinutes)
   const ranges = useMemo(() => recentRanges(recent), [recent])
+  const projects = useMemo(() => [...new Set(recent.map((e) => e.project).filter((p): p is string => !!p))], [recent])
 
-  const input: EntryInput = { employeeId: employee.id, date, start, end, breakMinutes: effectiveBreak, support, remark }
+  const input: EntryInput = { employeeId: employee.id, date, start, end, breakMinutes: effectiveBreak, support, project, remark }
 
   useEffect(() => {
     if (!date || !start || !end) return
@@ -116,11 +117,11 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
         </label>
         <label>
           เริ่ม
-          <input type="time" value={start} onChange={(e) => setStart(e.target.value)} required />
+          <TimeInput value={start} onChange={setStart} required />
         </label>
         <label>
           ถึง
-          <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
+          <TimeInput value={end} onChange={setEnd} required />
         </label>
         <label>
           พัก (นาที) {breakMinutes === null && <small>อัตโนมัติ</small>}
@@ -132,9 +133,18 @@ export default function EntryForm({ employee, month, editing, recent, onSaved, o
             onChange={(e) => setBreakMinutes(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
           />
         </label>
+        <label className="project">
+          Project
+          <input value={project} onChange={(e) => setProject(e.target.value)} list="recent-projects" placeholder="เช่น WMS ลูกค้า X" />
+          <datalist id="recent-projects">
+            {projects.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+        </label>
         <label className="remark">
-          หมายเหตุ
-          <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="เช่น Go-live WMS ลูกค้า X" />
+          รายละเอียดการทำ OT
+          <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="เช่น Go-live, แก้ปัญหา interface" />
         </label>
       </div>
 

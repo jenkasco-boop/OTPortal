@@ -118,4 +118,11 @@ public class OtCalculatorTests
         Assert.Equal(Mon, r.Lines[0].Date);                // sorted by date
         Assert.Equal(new OtTotals(510, 120, 210, 120 * 1.5m + 510 + 210 * 3), r.Totals);
     }
+
+    [Fact]
+    public void Period_runs_from_21st_of_previous_month_to_20th()
+    {
+        Assert.Equal((new DateOnly(2026, 9, 21), new DateOnly(2026, 10, 21)), OtPeriod.Range(2026, 10));
+        Assert.Equal((new DateOnly(2025, 12, 21), new DateOnly(2026, 1, 21)), OtPeriod.Range(2026, 1));
+    }
 }

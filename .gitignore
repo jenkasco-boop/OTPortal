@@ -18,3 +18,7 @@ src/OtPortal.Api/wwwroot/
 # legacy binary
 *.exe
 *.tsbuildinfo
+
+# personal location history (Google Timeline exports)
+docs/*.json
+*Timeline*.json

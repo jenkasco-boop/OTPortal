@@ -7,8 +7,10 @@ namespace OtPortal.Api.Export;
 
 /// <summary>
 /// Template rules (see docs/excel-template.md):
-///  - Any cell may contain header tokens: {{NAME_TH}} {{NAME_EN}} {{YYMM}} {{MONTH_TH}} {{MONTH_EN}} {{TOTAL_OT10}} {{TOTAL_OT15}} {{TOTAL_OT30}} {{TOTAL_OTX}}
-///  - One row holds line tokens such as {{row.No}} {{row.Date}} {{row.Ot15}}; that row is repeated once per line.
+///  - Any cell (and the sheet name) may contain header tokens: {{NAME_TH}} {{NAME_EN}} {{YYMM}} {{MONTH_TH}} {{MONTH_EN}}
+///    {{MONTH_NAME_EN}} {{TOTAL_OT10}} {{TOTAL_OT15}} {{TOTAL_OT30}} {{TOTAL_OTX}}
+///  - One row holds line tokens such as {{row.No}} {{row.Date}} {{row.Ot15}}; that row is repeated once per OT line.
+///  - Optionally another row holds request tokens such as {{req.Project}} {{req.Detail}}; repeated once per entry.
 /// </summary>
 /// <param name="templateFile">Full path to the .xlsx template. If the file is missing a plain sheet is generated.</param>
 public sealed partial class ExcelExporter(string templateFile)
@@ -26,11 +28,14 @@ public sealed partial class ExcelExporter(string templateFile)
 
     public byte[] Export(OtMonthReport report)
     {
-        using var wb = File.Exists(templateFile) ? new XLWorkbook(templateFile) : BuildDefaultWorkbook();
+        var useTemplate = File.Exists(templateFile);
+        using var wb = useTemplate ? new XLWorkbook(templateFile) : BuildDefaultWorkbook();
         var ws = wb.Worksheet(1);
 
-        FillRows(ws, report.Lines);
+        FillRows(ws, "req", report.Requests, RequestValue);
+        var lineRows = FillRows(ws, "row", report.Lines, LineValue);
         FillHeaderTokens(ws, report);
+        if (!useTemplate && lineRows is var (first, last)) ws.Columns().AdjustToContents(first - 1, last + 1);
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
@@ -70,26 +75,30 @@ public sealed partial class ExcelExporter(string templateFile)
         return wb;
     }
 
-    private static void FillRows(IXLWorksheet ws, IReadOnlyList<OtLine> lines)
+    /// <summary>Repeats the row holding <c>{{prefix.*}}</c> tokens once per item. Returns the filled row range.</summary>
+    private static (int First, int Last)? FillRows<T>(IXLWorksheet ws, string prefix, IReadOnlyList<T> items,
+        Func<T, string, object?> value)
     {
-        var templateRow = ws.RowsUsed().FirstOrDefault(r => r.CellsUsed().Any(c => c.GetString().Contains("{{row.")));
-        if (templateRow is null) return;
+        var marker = "{{" + prefix + ".";
+        var templateRow = ws.RowsUsed().FirstOrDefault(r => r.CellsUsed().Any(c => c.GetString().Contains(marker)));
+        if (templateRow is null) return null;
 
-        var tokens = templateRow.CellsUsed().ToDictionary(c => c.Address.ColumnNumber, c => c.GetString());
+        var tokens = templateRow.CellsUsed().Where(c => c.GetString().Contains(marker))
+            .ToDictionary(c => c.Address.ColumnNumber, c => c.GetString());
         var firstRow = templateRow.RowNumber();
 
-        if (lines.Count == 0)
+        if (items.Count == 0)
         {
             foreach (var col in tokens.Keys) ws.Cell(firstRow, col).Value = Blank.Value;
-            return;
+            return null;
         }
-        if (lines.Count > 1) templateRow.InsertRowsBelow(lines.Count - 1);
+        if (items.Count > 1) templateRow.InsertRowsBelow(items.Count - 1);
 
-        for (var i = 0; i < lines.Count; i++)
+        for (var i = 0; i < items.Count; i++)
         foreach (var (col, text) in tokens)
-            SetCell(ws.Cell(firstRow + i, col), text, field => LineValue(lines[i], field));
+            SetCell(ws.Cell(firstRow + i, col), text, field => value(items[i], field));
 
-        ws.Columns().AdjustToContents(firstRow - 1, firstRow + lines.Count);
+        return (firstRow, firstRow + items.Count - 1);
     }
 
     private static void FillHeaderTokens(IXLWorksheet ws, OtMonthReport r)
@@ -103,6 +112,7 @@ public sealed partial class ExcelExporter(string templateFile)
             "YYMM" => $"{r.Year % 100:00}{r.Month:00}",
             "MONTH_TH" => date.ToString("MMMM yyyy", th),
             "MONTH_EN" => date.ToString("MMMM yyyy", CultureInfo.InvariantCulture),
+            "MONTH_NAME_EN" => date.ToString("MMMM", CultureInfo.InvariantCulture),
             "TOTAL_OT10" => r.Totals.Ot10,
             "TOTAL_OT15" => r.Totals.Ot15,
             "TOTAL_OT30" => r.Totals.Ot30,
@@ -112,6 +122,9 @@ public sealed partial class ExcelExporter(string templateFile)
 
         foreach (var cell in ws.CellsUsed(c => c.DataType == XLDataType.Text && c.GetString().Contains("{{")))
             SetCell(cell, cell.GetString(), Header);
+
+        var sheetName = TokenRegex().Replace(ws.Name, m => Convert.ToString(Header(m.Groups[1].Value), CultureInfo.InvariantCulture) ?? m.Value);
+        if (sheetName != ws.Name) ws.Name = sheetName[..Math.Min(sheetName.Length, 31)];
     }
 
     /// <summary>A cell that is exactly one token keeps the value's type (number/date); otherwise tokens are replaced as text.</summary>
@@ -122,14 +135,17 @@ public sealed partial class ExcelExporter(string templateFile)
 
         if (match.Value == text.Trim())
         {
-            var value = resolve(match.Groups[1].Value.Replace("row.", ""));
+            var value = resolve(FieldName(match.Groups[1].Value));
             if (value is not null) cell.Value = ToCellValue(value);
             return;
         }
 
         cell.Value = TokenRegex().Replace(text, m =>
-            resolve(m.Groups[1].Value.Replace("row.", "")) is { } v ? Convert.ToString(v, CultureInfo.InvariantCulture) ?? "" : m.Value);
+            resolve(FieldName(m.Groups[1].Value)) is { } v ? Convert.ToString(v, CultureInfo.InvariantCulture) ?? "" : m.Value);
     }
+
+    /// <summary>"row.Date" / "req.Date" → "Date"; header tokens have no prefix.</summary>
+    private static string FieldName(string token) => token[(token.IndexOf('.') + 1)..];
 
     private static XLCellValue ToCellValue(object value) => value switch
     {
@@ -143,6 +159,7 @@ public sealed partial class ExcelExporter(string templateFile)
     {
         "No" => l.No,
         "Name" => l.Name,
+        "Project" => l.Project,
         "Special" => l.Special,
         "Day" => l.Day,
         "Date" => l.Date.ToString("dd/MM/yyyy"),
@@ -159,6 +176,16 @@ public sealed partial class ExcelExporter(string templateFile)
         "OtxTime" => l.OtxTime,
         "Remark" => l.Remark,
         "Approve" => "",
+        _ => null,
+    };
+
+    private static object? RequestValue(OtRequestLine r, string field) => field switch
+    {
+        "No" => r.No,
+        "Name" => r.Name,
+        "Project" => r.Project,
+        "Detail" => r.Detail,
+        "Date" => r.Date.ToString("dd/MM/yyyy"),
         _ => null,
     };
 }

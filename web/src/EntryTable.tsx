@@ -33,7 +33,8 @@ export default function EntryTable({ entries, report, exportUrl, onEdit, onDelet
                 <th>เวลา</th>
                 <th className="num">พัก</th>
                 <th>OT</th>
-                <th>หมายเหตุ</th>
+                <th>Project</th>
+                <th>รายละเอียด</th>
                 <th />
               </tr>
             </thead>
@@ -57,6 +58,7 @@ export default function EntryTable({ entries, report, exportUrl, onEdit, onDelet
                         </span>
                       ))}
                   </td>
+                  <td>{e.project}</td>
                   <td className="remark-cell">{e.remark}</td>
                   <td className="row-actions">
                     <button className="ghost small" onClick={() => onEdit(e)}>

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, toIsoDate, type Employee, type Entry, type Report } from './api'
+import { api, periodOf, periodRange, thShortDate, toIsoDate, type Employee, type Entry, type Report } from './api'
 import EntryForm from './EntryForm'
 import EntryTable from './EntryTable'
 import Settings from './Settings'
+import TimelineImport from './TimelineImport'
 
 const EMPLOYEE_KEY = 'otportal.employeeId'
 
-const currentMonth = () => toIsoDate(new Date()).slice(0, 7)
+const currentPeriod = () => periodOf(toIsoDate(new Date()))
 
 function readStoredEmployee(): number | null {
   try {
@@ -20,14 +21,16 @@ function readStoredEmployee(): number | null {
 export default function App() {
   const [employees, setEmployees] = useState<Employee[] | null>(null)
   const [employeeId, setEmployeeId] = useState<number | null>(readStoredEmployee)
-  const [month, setMonth] = useState(currentMonth)
+  const [month, setMonth] = useState(currentPeriod)
   const [entries, setEntries] = useState<Entry[]>([])
   const [report, setReport] = useState<Report | null>(null)
   const [editing, setEditing] = useState<Entry | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showTimeline, setShowTimeline] = useState(false)
   const [error, setError] = useState('')
 
   const employee = employees?.find((e) => e.id === employeeId) ?? null
+  const range = periodRange(month)
 
   const loadEmployees = useCallback(async () => {
     const list = await api.employees()
@@ -94,7 +97,15 @@ export default function App() {
       <header className="topbar">
         <h1>OT Portal</h1>
         <div className="topbar-right">
-          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+          <label className="period">
+            <span>
+              รอบ {thShortDate(range.from)} – {thShortDate(range.to)}
+            </span>
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+          </label>
+          <button className="ghost" onClick={() => setShowTimeline((v) => !v)} title="สร้างรายการ OT จากไฟล์ Google Timeline">
+            📍 Timeline
+          </button>
           <button className="ghost" onClick={() => setShowSettings(true)} title="ตั้งค่า">
             {employee.nameTh} ({employee.nameEn}) ⚙
           </button>
@@ -107,6 +118,16 @@ export default function App() {
         </div>
       )}
 
+      {showTimeline && (
+        <TimelineImport
+          employee={employee}
+          month={month}
+          entries={entries}
+          onImported={() => reload().catch((e) => setError(e.message))}
+          onClose={() => setShowTimeline(false)}
+        />
+      )}
+
       <EntryForm
         key={editing?.id ?? 'new'}
         employee={employee}
@@ -115,7 +136,7 @@ export default function App() {
         recent={entries}
         onSaved={async (date) => {
           setEditing(null)
-          if (!date.startsWith(month)) setMonth(date.slice(0, 7))
+          if (periodOf(date) !== month) setMonth(periodOf(date))
           else await reload()
         }}
         onCancel={() => setEditing(null)}

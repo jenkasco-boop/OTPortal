@@ -50,7 +50,7 @@ dotnet test
 
 ### ตั้งค่าครั้งแรก
 
-1. **Server:** ติดตั้ง [ASP.NET Core 10 Hosting Bundle](https://dotnet.microsoft.com/download/dotnet/10.0) แล้ว `iisreset`
+1. **Server:** ติดตั้ง [ASP.NET Core 9 Hosting Bundle](https://dotnet.microsoft.com/download/dotnet/9.0) แล้ว `iisreset`
 2. **IIS:** รันในฐานะ Administrator
    ```powershell
    .\deploy\setup-iis.ps1 -Path C:\inetpub\wwwroot\otportal -Port 8085 -RunnerAccount "NT AUTHORITY\NETWORK SERVICE"

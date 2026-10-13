@@ -17,7 +17,28 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
-    scope.ServiceProvider.GetRequiredService<AppDb>().Database.EnsureCreated();
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+    db.Database.EnsureCreated();
+    // EnsureCreated never alters an existing database: add columns introduced after the first release.
+    var entryColumns = db.Database.SqlQueryRaw<string>("SELECT name AS Value FROM pragma_table_info('Entries')").ToList();
+    if (!entryColumns.Contains(nameof(OtEntry.Project)))
+        db.Database.ExecuteSqlRaw("ALTER TABLE Entries ADD COLUMN Project TEXT NULL");
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "Places" (
+            "Id" INTEGER NOT NULL CONSTRAINT "PK_Places" PRIMARY KEY AUTOINCREMENT,
+            "EmployeeId" INTEGER NOT NULL,
+            "PlaceId" TEXT NULL,
+            "Lat" REAL NOT NULL,
+            "Lng" REAL NOT NULL,
+            "Name" TEXT NULL,
+            "Project" TEXT NULL,
+            "Address" TEXT NULL,
+            "UpdatedAt" TEXT NOT NULL,
+            CONSTRAINT "FK_Places_Employees_EmployeeId" FOREIGN KEY ("EmployeeId") REFERENCES "Employees" ("Id") ON DELETE CASCADE);
+        CREATE INDEX IF NOT EXISTS "IX_Places_EmployeeId" ON "Places" ("EmployeeId");
+        """);
+}
 
 app.UseExceptionHandler();
 app.UseDefaultFiles();
@@ -82,14 +103,13 @@ api.MapPost("/preview", async (EntryDto dto, AppDb db) =>
 
 api.MapGet("/entries", async (int employeeId, string month, AppDb db) =>
 {
-    if (!TryParseMonth(month, out var from)) return Results.BadRequest("month must be yyyy-MM");
-    var to = from.AddMonths(1);
+    if (!TryParsePeriod(month, out var from, out var to)) return Results.BadRequest("month must be yyyy-MM");
     var entries = await db.Entries.Where(e => e.EmployeeId == employeeId && e.Date >= from && e.Date < to)
         .OrderBy(e => e.Date).ThenBy(e => e.Start).ToListAsync();
     var holidays = await HolidaySet(db, from, to.AddDays(1));
     return Results.Ok(entries.Select(e => new
     {
-        e.Id, e.Date, e.Start, e.End, e.BreakMinutes, e.Support, e.Remark,
+        e.Id, e.Date, e.Start, e.End, e.BreakMinutes, e.Support, e.Project, e.Remark,
         Result = OtCalculator.Calculate(e.Date, e.Start, e.End, e.BreakMinutes, e.Support, holidays.Contains),
     }));
 });
@@ -124,6 +144,33 @@ api.MapDelete("/entries/{id:int}", async (int id, AppDb db) =>
     return Results.NoContent();
 });
 
+// ---------- Saved places (names for Google Timeline places) ----------
+api.MapGet("/places", (int employeeId, AppDb db) => db.Places.Where(p => p.EmployeeId == employeeId).ToListAsync());
+
+// Upsert: same place id, else the nearest saved place within SavedPlaces.MatchRadiusMeters. Clearing every field deletes it.
+api.MapPut("/places", async (PlaceDto dto, AppDb db) =>
+{
+    if (!await db.Employees.AnyAsync(e => e.Id == dto.EmployeeId)) return Results.BadRequest("ไม่พบพนักงาน");
+    var own = await db.Places.Where(p => p.EmployeeId == dto.EmployeeId).ToListAsync();
+    var place = SavedPlaces.Match(own, dto.PlaceId, dto.Lat, dto.Lng);
+
+    var name = Clean(dto.Name);
+    var project = Clean(dto.Project);
+    var address = Clean(dto.Address);
+    if (name is null && project is null && address is null)
+    {
+        if (place is not null) db.Places.Remove(place);
+        await db.SaveChangesAsync();
+        return Results.NoContent();
+    }
+
+    if (place is null) db.Places.Add(place = new SavedPlace { EmployeeId = dto.EmployeeId, Lat = dto.Lat, Lng = dto.Lng });
+    place.PlaceId ??= dto.PlaceId;
+    (place.Name, place.Project, place.Address, place.UpdatedAt) = (name, project, address, DateTime.UtcNow);
+    await db.SaveChangesAsync();
+    return Results.Ok(place);
+});
+
 // ---------- Report / export ----------
 api.MapGet("/report", async (int employeeId, string month, AppDb db) =>
     await BuildReport(employeeId, month, db) is { } r ? Results.Ok(r) : Results.NotFound());
@@ -136,6 +183,8 @@ api.MapGet("/export", async (int employeeId, string month, AppDb db, ExcelExport
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", report.FileName + ".xlsx");
 });
 
+// Unknown /api/... paths are 404, not the SPA page (which the client would try to read as JSON).
+api.MapFallback(() => Results.NotFound());
 app.MapFallbackToFile("index.html");
 app.Run();
 
@@ -157,25 +206,33 @@ static void Apply(OtEntry entry, EntryDto dto)
     entry.End = dto.End;
     entry.BreakMinutes = Math.Max(0, dto.BreakMinutes);
     entry.Support = dto.Support;
+    entry.Project = string.IsNullOrWhiteSpace(dto.Project) ? null : dto.Project.Trim();
     entry.Remark = string.IsNullOrWhiteSpace(dto.Remark) ? null : dto.Remark.Trim();
 }
+
+static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
 static async Task<HashSet<DateOnly>> HolidaySet(AppDb db, DateOnly from, DateOnly toInclusive) =>
     (await db.Holidays.Where(h => h.Date >= from && h.Date <= toInclusive).Select(h => h.Date).ToListAsync()).ToHashSet();
 
-static bool TryParseMonth(string month, out DateOnly first) =>
-    DateOnly.TryParseExact(month + "-01", "yyyy-MM-dd", out first);
+static bool TryParsePeriod(string month, out DateOnly from, out DateOnly toExclusive)
+{
+    (from, toExclusive) = (default, default);
+    if (!DateOnly.TryParseExact(month + "-01", "yyyy-MM-dd", out var first)) return false;
+    (from, toExclusive) = OtPeriod.Range(first.Year, first.Month);
+    return true;
+}
 
 static async Task<OtMonthReport?> BuildReport(int employeeId, string month, AppDb db)
 {
-    if (!TryParseMonth(month, out var from)) return null;
+    if (!TryParsePeriod(month, out var from, out var to)) return null;
     var employee = await db.Employees.FindAsync(employeeId);
     if (employee is null) return null;
-    var to = from.AddMonths(1);
     var entries = await db.Entries.Where(e => e.EmployeeId == employeeId && e.Date >= from && e.Date < to).ToListAsync();
     var holidays = await HolidaySet(db, from, to.AddDays(1));
-    return OtReport.Build(employee, from.Year, from.Month, entries, holidays.Contains);
+    return OtReport.Build(employee, to.Year, to.Month, entries, holidays.Contains);
 }
 
+public record PlaceDto(int EmployeeId, string? PlaceId, double Lat, double Lng, string? Name, string? Project, string? Address);
 public record EmployeeDto(string NameEn, string NameTh, int DefaultBreakMinutes);
-public record EntryDto(int EmployeeId, DateOnly Date, TimeOnly Start, TimeOnly End, int BreakMinutes, bool Support, string? Remark);
+public record EntryDto(int EmployeeId, DateOnly Date, TimeOnly Start, TimeOnly End, int BreakMinutes, bool Support, string? Project, string? Remark);
