@@ -1,0 +1,20 @@
+bin/
+obj/
+node_modules/
+*.user
+.vs/
+.vscode/*
+!.vscode/extensions.json
+
+# runtime data
+App_Data/
+*.db
+*.db-shm
+*.db-wal
+
+# frontend build output (built by CI)
+src/OtPortal.Api/wwwroot/
+
+# legacy binary
+*.exe
+*.tsbuildinfo

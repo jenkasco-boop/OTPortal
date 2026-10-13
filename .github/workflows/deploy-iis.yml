@@ -1,0 +1,94 @@
+name: Deploy OT Portal (IIS)
+
+# push เข้า cicd-deploy เมื่อไหร่ -> test + build + deploy ขึ้น IIS ทันที
+# ต้องตั้ง Repository variables (Settings > Secrets and variables > Actions > Variables):
+#   IIS_DEPLOY_PATH  เช่น C:\inetpub\wwwroot\otportal   (โฟลเดอร์ของ OT Portal เท่านั้น! robocopy /MIR จะลบไฟล์อื่นทิ้ง)
+#   IIS_APP_POOL     เช่น OTPortal                       (ไม่บังคับ ถ้าตั้งจะ stop/start app pool ระหว่าง deploy)
+
+on:
+  push:
+    branches: [cicd-deploy]
+  workflow_dispatch:
+
+concurrency:
+  group: otportal-deploy-iis
+  cancel-in-progress: false
+
+env:
+  DEPLOY_TARGET: ${{ vars.IIS_DEPLOY_PATH }}
+  APP_POOL: ${{ vars.IIS_APP_POOL }}
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  build-deploy:
+    # ถ้าไฟล์นี้หลุดไป repo อื่น จะไม่รัน
+    if: github.repository == 'jenkasco-boop/OTPortal'
+    runs-on: [self-hosted, windows]
+    steps:
+      - name: Check config
+        shell: powershell
+        run: |
+          if (-not $env:DEPLOY_TARGET) { throw "ยังไม่ได้ตั้ง repository variable IIS_DEPLOY_PATH" }
+          if ($env:DEPLOY_TARGET -match '^[A-Za-z]:\?$' -or $env:DEPLOY_TARGET -match '\wwwroot\?$') {
+            throw "IIS_DEPLOY_PATH '$env:DEPLOY_TARGET' กว้างเกินไป ต้องเป็นโฟลเดอร์เฉพาะของ OT Portal"
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          # เก็บ node_modules จากรอบก่อนไว้ ไม่ต้องติดตั้งใหม่ทั้งหมดทุกรอบ
+          clean: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile --prefer-offline --store-dir C:\deploy\pnpm-store
+          pnpm build
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish
+        run: dotnet publish src/OtPortal.Api/OtPortal.Api.csproj --configuration Release --output publish
+
+      - name: Deploy to IIS
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force $env:DEPLOY_TARGET | Out-Null
+          $offline = Join-Path $env:DEPLOY_TARGET "app_offline.htm"
+
+          # app_offline.htm ทำให้ ASP.NET Core Module ปิดแอปและปลดล็อกไฟล์ dll
+          Set-Content $offline '<html><body style="font-family:sans-serif"><h2>OT Portal กำลังอัปเดต กรุณารอสักครู่...</h2></body></html>' -Encoding UTF8
+          if ($env:APP_POOL) {
+            Import-Module WebAdministration
+            if ((Get-WebAppPoolState $env:APP_POOL).Value -ne 'Stopped') { Stop-WebAppPool $env:APP_POOL }
+          }
+          Start-Sleep -Seconds 3
+
+          try {
+            # App_Data = ฐานข้อมูล SQLite ห้ามลบ / app_offline.htm ลบเองตอนท้าย
+            robocopy (Join-Path $PWD "publish") $env:DEPLOY_TARGET /MIR /XD App_Data /XF app_offline.htm /R:5 /W:3 /NP /NFL /NDL
+            if ($LASTEXITCODE -ge 8) { throw "robocopy failed with ExitCode $LASTEXITCODE" }
+            $global:LASTEXITCODE = 0
+          }
+          finally {
+            if ($env:APP_POOL) { Start-WebAppPool $env:APP_POOL }
+            Remove-Item $offline -ErrorAction SilentlyContinue
+          }
+
+      - name: Smoke test
+        shell: powershell
+        if: ${{ vars.IIS_SITE_URL != '' }}
+        run: |
+          $r = Invoke-WebRequest "${{ vars.IIS_SITE_URL }}/api/employees" -UseBasicParsing -TimeoutSec 60
+          if ($r.StatusCode -ne 200) { throw "Smoke test failed: $($r.StatusCode)" }
+          Write-Host "OK $($r.StatusCode)"
